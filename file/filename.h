@@ -39,7 +39,8 @@ enum FileType {
   kMetaDatabase,
   kIdentityFile,
   kOptionsFile,
-  kBlobFile
+  kBlobFile,
+  kDeleteCanaryFile
 };
 
 // Return the name of the log file with the specified number

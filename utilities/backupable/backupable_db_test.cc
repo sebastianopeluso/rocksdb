@@ -561,6 +561,9 @@ class BackupableDBTest : public testing::Test {
     // most tests will use multi-threaded backups
     backupable_options_->max_background_operations = 7;
 
+    // add a canary delete file when creating a backup
+    backupable_options_->with_canary_delete_file = true;
+
     // delete old files in db
     DestroyDB(dbname_, options_);
   }
@@ -859,6 +862,11 @@ TEST_F(BackupableDBTest, NoDoubleCopy_And_AutoGC) {
   std::vector<std::string> should_have_written = {
       "/shared/.00010.sst.tmp", "/shared/.00011.sst.tmp", "/private/1/CURRENT",
       "/private/1/MANIFEST-01", "/private/1/00011.log",   "/meta/.1.tmp"};
+
+  if (backupable_options_->with_canary_delete_file) {
+    should_have_written.push_back("/private/1/.DELETE-CANARY");
+  }
+
   AppendPath(backupdir_, should_have_written);
   test_backup_env_->AssertWrittenFiles(should_have_written);
 
@@ -883,6 +891,11 @@ TEST_F(BackupableDBTest, NoDoubleCopy_And_AutoGC) {
         "/shared/." + other_sst + ".tmp", private_dir + "/CURRENT",
         private_dir + "/MANIFEST-01", private_dir + "/00011.log",
         std::string("/meta/.") + db_number + ".tmp"};
+
+    if (backupable_options_->with_canary_delete_file) {
+      should_have_written.push_back(private_dir + "/.DELETE-CANARY");
+    }
+
     AppendPath(backupdir_, should_have_written);
     test_backup_env_->AssertWrittenFiles(should_have_written);
   }

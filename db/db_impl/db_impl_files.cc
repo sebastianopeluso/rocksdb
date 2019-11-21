@@ -450,6 +450,7 @@ void DBImpl::PurgeObsoleteFiles(JobContext& state, bool schedule_only) {
       case kIdentityFile:
       case kMetaDatabase:
       case kBlobFile:
+      case kDeleteCanaryFile:
         keep = true;
         break;
     }

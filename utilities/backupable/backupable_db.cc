@@ -874,6 +874,17 @@ Status BackupEngineImpl::CreateNewBackupWithMetadata(
               progress_callback, contents);
         } /* create_file_cb */,
         &sequence_number, flush_before_backup ? 0 : port::kMaxUint64);
+
+    if (s.ok() && options_.with_canary_delete_file) {
+      const std::string& contents = "Healthy Backup";
+      s = AddBackupFileWorkItem(
+          live_dst_paths, backup_items_to_finish, new_backup_id,
+          false /* shared */, "" /* src_dir */,
+          "/.DELETE-CANARY" /* fname */, EnvOptions() /* src_env_options */,
+          rate_limiter, contents.size(), 0 /* size_limit */,
+          false /* shared_checksum */, progress_callback, contents);
+    }
+
     if (s.ok()) {
       new_backup->SetSequenceNumber(sequence_number);
     }
@@ -1188,6 +1199,13 @@ Status BackupEngineImpl::RestoreDBFromBackup(
     if (!ok) {
       return Status::Corruption("Backup corrupted");
     }
+
+    if (type == kDeleteCanaryFile) {
+      ROCKS_LOG_INFO(options_.info_log,
+                     "Skipping restore of delete canary %s\n", file.c_str());
+      continue;
+    }
+
     // 3. Construct the final path
     // kLogFile lives in wal_dir and all the rest live in db_dir
     dst = ((type == kLogFile) ? wal_dir : db_dir) +

@@ -469,6 +469,18 @@ void VerifySuccessor(const Slice& s, const Slice& t) {
   ASSERT_FALSE(rbc->IsSameLengthImmediateSuccessor(t, s));
 }
 
+void VerifyNotSuccessorWithU64Ts(const Slice& s, const Slice& t) {
+  auto c = BytewiseComparatorWithU64Ts();
+  ASSERT_FALSE(c->IsSameLengthImmediateSuccessor(s, t));
+  ASSERT_FALSE(c->IsSameLengthImmediateSuccessor(t, s));
+}
+
+void VerifySuccessorWithU64Ts(const Slice& s, const Slice& t) {
+  auto c = BytewiseComparatorWithU64Ts();
+  ASSERT_TRUE(c->IsSameLengthImmediateSuccessor(s, t));
+  ASSERT_FALSE(c->IsSameLengthImmediateSuccessor(t, s));
+}
+
 }  // anonymous namespace
 
 TEST_P(ComparatorDBTest, IsSameLengthImmediateSuccessor) {
@@ -528,6 +540,55 @@ TEST_P(ComparatorDBTest, IsSameLengthImmediateSuccessor) {
     Slice t(t_array, 4);
     VerifyNotSuccessor(s, t);
   }
+  {
+    const char s_array[] = "abcxy\x13\x50\x8a\xac\x13\x50\x8a\xac";
+    const char t_array[] = "abcxyz\x13\x50\x8a\xac\x13\x50\x8a\xac";
+    Slice s(s_array);
+    Slice t(t_array);
+    VerifyNotSuccessorWithU64Ts(s, t);
+  }
+  {
+    const char s_array[] = "abc1xyz\x13\x50\x8a\xac\x13\x50\x8a\xac";
+    const char t_array[] = "abc2xyz\x13\x50\x8a\xac\x13\x50\x8a\xac";
+    Slice s(s_array);
+    Slice t(t_array);
+    VerifyNotSuccessorWithU64Ts(s, t);
+  }
+  {
+    const char s_array[] = "abcxyz\x13\x50\x8a\xac\x13\x50\x8a\xac";
+    const char t_array[] = "abcxyz\x13\x50\x8a\xac\x13\x50\x8a\xac";
+    Slice s(s_array);
+    Slice t(t_array);
+    VerifyNotSuccessorWithU64Ts(s, t);
+  }
+  {
+    const char s_array[] = "abcxyz\x14\x50\x8a\xac\x13\x50\x8a\xac";
+    const char t_array[] = "abcxyz\x13\x50\x8a\xac\x13\x50\x8a\xac";
+    Slice s(s_array);
+    Slice t(t_array);
+    VerifySuccessorWithU64Ts(s, t);
+  }
+  {
+    const char s_array[] = "abcxyy\x13\x50\x8a\xac\x13\x50\x8a\xac";
+    const char t_array[] = "abcxyz\x13\x50\x8a\xac\x13\x50\x8a\xac";
+    Slice s(s_array);
+    Slice t(t_array);
+    VerifySuccessorWithU64Ts(s, t);
+  }
+  {
+    const char s_array[] = "abcxyz\x01\x00\x00\x00\x00\x00\x00\x00";
+    const char t_array[] = "abcxyz\x00\x00\x00\x00\x00\x00\x00\x00";
+    Slice s(s_array, 14);
+    Slice t(t_array, 14);
+    VerifySuccessorWithU64Ts(s, t);
+  }
+  {
+    const char s_array[] = "abcxyz\x00\x00\x00\x00\x00\x00\x00\x00";
+    const char t_array[] = "abcxyz\xff\xff\xff\xff\xff\xff\xff\xff";
+    Slice s(s_array, 14);
+    Slice t(t_array, 14);
+    VerifyNotSuccessorWithU64Ts(s, t);
+  }
 }
 
 TEST_P(ComparatorDBTest, FindShortestSeparator) {
@@ -536,6 +597,17 @@ TEST_P(ComparatorDBTest, FindShortestSeparator) {
 
   BytewiseComparator()->FindShortestSeparator(&s1, s2);
   ASSERT_EQ("abc2", s1);
+
+  std::string s1_ts = "abc1xyz\x13\x50\x8a\xac\x13\x50\x8a\xac";
+  std::string s2_ts = "abc3xy\x13\x50\x8a\xac\x13\x50\x8a\xac";
+
+  BytewiseComparatorWithU64Ts()->FindShortestSeparator(&s1_ts, s2_ts);
+  ASSERT_EQ("abc2\x13\x50\x8a\xac\x13\x50\x8a\xac", s1_ts);
+
+  s1_ts = "abc1xyz\x23\x40\x7b\xaa\x22\x49\x8a\xac";
+
+  BytewiseComparatorWithU64Ts()->FindShortestSeparator(&s1_ts, s2_ts);
+  ASSERT_EQ("abc2\x23\x40\x7b\xaa\x22\x49\x8a\xac", s1_ts);
 
   s1 = "abc5xyztt";
 
@@ -642,19 +714,35 @@ TEST_P(ComparatorDBTest, SeparatorSuccessorRandomizeTest) {
       std::string rev_separator = s1;
       ReverseBytewiseComparator()->FindShortestSeparator(&rev_separator, s2);
 
+      // Append timestamps
+      std::string s1_ts = s1;
+      s1_ts.append("\x13\x50\x8a\xac\x13\x50\x8a\xac");
+      std::string s2_ts = s2;
+      s2_ts.append("\x13\x50\x8a\xac\x13\x50\x8a\xac");
+      std::string separator_ts = s1_ts;
+      BytewiseComparatorWithU64Ts()->FindShortestSeparator(&separator_ts,
+                                                           s2_ts);
+
       if (s1 == s2) {
         ASSERT_EQ(s1, separator);
         ASSERT_EQ(s2, rev_separator);
+        ASSERT_EQ(s1_ts, separator_ts);
       } else if (s1 < s2) {
         ASSERT_TRUE(s1 <= separator);
         ASSERT_TRUE(s2 > separator);
         ASSERT_LE(separator.size(), std::max(s1.size(), s2.size()));
         ASSERT_EQ(s1, rev_separator);
+        ASSERT_TRUE(
+            BytewiseComparatorWithU64Ts()->Compare(s1_ts, separator_ts) <= 0);
+        ASSERT_TRUE(
+            BytewiseComparatorWithU64Ts()->Compare(s2_ts, separator_ts) > 0);
+        ASSERT_LE(separator_ts.size(), std::max(s1_ts.size(), s2_ts.size()));
       } else {
         ASSERT_TRUE(s1 >= rev_separator);
         ASSERT_TRUE(s2 < rev_separator);
         ASSERT_LE(rev_separator.size(), std::max(s1.size(), s2.size()));
         ASSERT_EQ(s1, separator);
+        ASSERT_EQ(s1_ts, separator_ts);
       }
     }
 
@@ -666,6 +754,12 @@ TEST_P(ComparatorDBTest, SeparatorSuccessorRandomizeTest) {
     succ = s1;
     ReverseBytewiseComparator()->FindShortSuccessor(&succ);
     ASSERT_TRUE(succ <= s1);
+
+    std::string s1_ts = s1;
+    s1_ts.append("\x13\x50\x8a\xac\x13\x50\x8a\xac");
+    std::string succ_ts = s1_ts;
+    BytewiseComparatorWithU64Ts()->FindShortSuccessor(&succ_ts);
+    ASSERT_TRUE(BytewiseComparatorWithU64Ts()->Compare(succ_ts, s1_ts) >= 0);
   }
 }
 

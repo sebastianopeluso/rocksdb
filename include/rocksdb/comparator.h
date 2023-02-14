@@ -161,4 +161,10 @@ extern const Comparator* BytewiseComparator();
 // ordering.
 extern const Comparator* ReverseBytewiseComparator();
 
+// Return a builtin comparator for keys with u64 ints as timestamps.
+// The comparator uses a lexicographic byte-wise ordering for the
+// portion of the keys without timestamp. Timestamps' order for equal keys
+// follows the inverse of integer natural ordering (from larger to smaller).
+extern const Comparator* BytewiseComparatorWithU64Ts();
+
 }  // namespace ROCKSDB_NAMESPACE

@@ -250,8 +250,69 @@ class ComparatorWithU64TsImpl : public Comparator {
 
   const char* Name() const override { return kClassName(); }
 
-  void FindShortSuccessor(std::string*) const override {}
-  void FindShortestSeparator(std::string*, const Slice&) const override {}
+  void FindShortSuccessor(std::string* key) const override {
+    const size_t ts_sz = timestamp_size();
+    Slice u_key(*key);
+    Slice u_key_no_ts = StripTimestampFromUserKey(u_key, ts_sz);
+    std::string str_u_key_no_ts = u_key_no_ts.ToString();
+    cmp_without_ts_.FindShortSuccessor(&str_u_key_no_ts);
+    Slice u_key_short_no_ts(str_u_key_no_ts);
+    Slice ts = ExtractTimestampFromUserKey(u_key, ts_sz);
+    ReplaceKeyAndTimestamp(key, u_key_short_no_ts, ts);
+  }
+
+  void FindShortestSeparator(std::string* start,
+                             const Slice& limit) const override {
+    const size_t ts_sz = timestamp_size();
+    Slice u_start(*start);
+    assert(u_start.size() >= ts_sz);
+    Slice u_start_no_ts = StripTimestampFromUserKey(u_start, ts_sz);
+    std::string str_u_start_no_ts = u_start_no_ts.ToString();
+    assert(limit.size() >= ts_sz);
+    Slice u_limit_no_ts = StripTimestampFromUserKey(limit, ts_sz);
+    cmp_without_ts_.FindShortestSeparator(&str_u_start_no_ts, u_limit_no_ts);
+    Slice u_start_short_no_ts(str_u_start_no_ts);
+    Slice ts = ExtractTimestampFromUserKey(u_start, ts_sz);
+    ReplaceKeyAndTimestamp(start, u_start_short_no_ts, ts);
+  }
+
+  bool IsSameLengthImmediateSuccessor(const Slice& s,
+                                      const Slice& t) const override {
+    if (s.size() != t.size() || s.size() == 0) {
+      return false;
+    }
+    const size_t ts_sz = timestamp_size();
+    if (s.size() < ts_sz) {
+      return cmp_without_ts_.IsSameLengthImmediateSuccessor(s, t);
+    }
+    // We could rely on CompareWithoutTimestamp and CompareTimestamp.
+    // However, we need to extract keys and timestamps anyway to
+    // check immediate successor condition on those
+    Slice s_ts = ExtractTimestampFromUserKey(s, ts_sz);
+    Slice t_ts = ExtractTimestampFromUserKey(t, ts_sz);
+    assert(s_ts.size() == sizeof(uint64_t));
+    assert(t_ts.size() == sizeof(uint64_t));
+    uint64_t lhs_ts = DecodeFixed64(s_ts.data());
+    uint64_t rhs_ts = DecodeFixed64(t_ts.data());
+    uint64_t overflow_guard = rhs_ts + 1;
+    Slice s_no_ts = StripTimestampFromUserKey(s, ts_sz);
+    Slice t_no_ts = StripTimestampFromUserKey(t, ts_sz);
+    if (cmp_without_ts_.Compare(s_no_ts, t_no_ts) == 0) {
+      // Case 1: same key, immediate successor timestamps
+      // Note that newer timestamp comes first
+      if (overflow_guard > rhs_ts && lhs_ts == overflow_guard) {
+        return true;
+      }
+    } else if (cmp_without_ts_.IsSameLengthImmediateSuccessor(s_no_ts,
+                                                              t_no_ts)) {
+      // Case 2: immediate successor keys, same timestamps
+      if (lhs_ts == rhs_ts) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   int Compare(const Slice& a, const Slice& b) const override {
     int ret = CompareWithoutTimestamp(a, b);
     size_t ts_sz = timestamp_size();

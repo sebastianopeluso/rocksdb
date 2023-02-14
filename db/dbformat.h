@@ -190,6 +190,10 @@ extern void AppendKeyWithMinTimestamp(std::string* result, const Slice& key,
 extern void AppendKeyWithMaxTimestamp(std::string* result, const Slice& key,
                                       size_t ts_sz);
 
+// Replace key and timestamp in result with `key` and `ts`
+extern void ReplaceKeyAndTimestamp(std::string* result, const Slice& key,
+                                   const Slice& ts);
+
 // `key` is a user key with timestamp. Append the user key without timestamp
 // and the maximal timestamp to *result.
 extern void AppendUserKeyWithMaxTimestamp(std::string* result, const Slice& key,
